@@ -208,8 +208,8 @@ Stat_data_func<-function(tf,cond,data.New.TF) {
       colnames(datafile.2)<-c("GeneC",i)
       data_out<-merge(data_out,datafile.2, by="GeneC", all=TRUE)
     }else{
-      name<-list.files(path="TF_data_files/GEMPeaks/",pattern=paste(i,"_geneTargetList_(.*).csv$",sep=""))
-      datafile <-tryCatch({read.csv(paste0("TF_data_files/GEMPeaks/",name),sep=",")},
+      name<-list.files(path="TF_data_files/Data/",pattern=paste(i,"_geneTargetList_(.*).csv$",sep=""))
+      datafile <-tryCatch({read.csv(paste0("TF_data_files/Data/",name),sep=",")},
                          error=function(file){
                            dummyvec<-data.frame(t(rep(NA, (length(name.Cond)+1))))
                            colnames(dummyvec)<-c("X",name.Cond)
@@ -869,8 +869,8 @@ function(input, output) {
         dataTarget<-rdata.New.TF()$Targets
     }else{
       
-      name<-list.files(path="TF_data_files/GEMPeaks/",pattern=paste(input$TFs,"_geneTargetList_(.*).csv$",sep=""))
-      dataTarget <-tryCatch({read.csv(paste0("TF_data_files/GEMPeaks/",name),sep=",")},
+      name<-list.files(path="TF_data_files/Data/",pattern=paste(input$TFs,"_geneTargetList_(.*).csv$",sep=""))
+      dataTarget <-tryCatch({read.csv(paste0("TF_data_files/Data/",name),sep=",")},
                           error=function(file){
                             dummyvec<-data.frame(t(rep(NA, (length(name.Cond)+1))))
                             colnames(dummyvec)<-c("X",name.Cond)
@@ -1001,26 +1001,30 @@ function(input, output) {
     colnames(pathways.go1)<-"GO-terms"
     return(pathways.go1)
   }, options=list(pageLength=5))
-  output$selectInput <- renderText({
+  
+  output$TestInput<-renderUI({
     if(input$test=="Fisher"){
-      return("The Fisher test is based on the occurrence of one transcription factor at the same gene as another transcription factor. 
-             The probability is plotted in a heatmap where * denotes p<0.001")
+      textOut<-("The Fisher test is based on the occurrence of one transcription factor at the same gene as another transcription factor. The probability is plotted in a heatmap where * denotes p<0.001")
     }
-    
     if(input$test=="Heatmap"){
-      return("Generates a heatmap of the selected genes")
+      textOut<-("Generates a heatmap of the selected genes where the total number of binding sites are normalized to 1")
     }
     if(input$test=="Network"){
-      return("The Network shows each transcription factor and its targets vs all other transcription factors. 
-             Transcription factors that are highly connected appear closer on the chart. The node size is weighted.")
+      textOut<-("The Network shows each transcription factor and its targets vs all other transcription factors. Transcription factors that are highly connected appear closer on the chart. The node size is weighted based on the number of edges.")
     }
     if(input$test=="Cluster"){
-      return("The genes in the GO-term is clustered by k-medoids clustering based on the transcription factor occurrence. Positive medoid coefficient indicates presence of TF while negative coefficient indicates absence of TF in the cluster.")
+      textOut<-("The genes in the GO-term is clustered by k-medoids clustering based on the transcription factor occurrence. Positive medoid coefficient indicates presence of TF while negative coefficient indicates absence of TF in the cluster.")
     }
     if(input$test=="Linear Model"){
-      return("Based on the transcription factor occurrence a linear model is used to predict the resulting TPM values.")
+      textOut<-("Based on the transcription factor occurrence a linear model is used to predict the resulting TPM values. Both the R-square and the R-squared adjusted is displayed" )
     }
+    tagList(
+      actionButton("TestInfo", "?"),
+      bsTooltip("TestInfo", textOut,
+                "right", options = list(container = "body"))
+    )
   })
+
   output$table1 <- renderDataTable({ rdataTarget()}, options=list(pageLength=5))
   output$sctrex<-renderImage({
     
@@ -1177,7 +1181,12 @@ function(input, output) {
     })
   }
   
-  
+  output$ReadsDown<-renderUI({
+    selectInput("ReadsData", "Download Data",name.Cond, selected=name.Cond[1], selectize=TRUE)
+  })
+  output$StatDown<-renderUI({
+    selectInput("StatData", "Download Data",name.Cond, selected=name.Cond[1], selectize=TRUE)
+  })
   output$downloadreadsData <- downloadHandler(
     filename = function() {
       paste(input$text,"_",input$ReadsData, "_Reads.csv", sep = "")
@@ -1194,8 +1203,8 @@ function(input, output) {
       paste(input$TFs, "_SumPeaks.csv", sep = "")
     },
     content = function(file) {
-      file.name<-list.files(path="TF_data_files/GEMPeaks/",pattern=paste(input$TFs,"(.*)_geneTargetList_(.*).csv$",sep=""))
-      out<-read.csv(paste("TF_data_files/GEMPeaks/",file.name,sep=""),sep=",")
+      file.name<-list.files(path="TF_data_files//",pattern=paste(input$TFs,"(.*)_geneTargetList_(.*).csv$",sep=""))
+      out<-read.csv(paste("TF_data_files/Data/",file.name,sep=""),sep=",")
       write.csv(out, file, row.names = FALSE)
     }
   )
@@ -1204,8 +1213,8 @@ function(input, output) {
       paste(input$TFs, "_All_PeakPos.csv", sep = "")
     },
     content = function(file) {
-      file.name<-list.files(path="TF_data_files/GEMPeaks/",pattern=paste(input$TFs,"(.*)_GEManalysis_(.*).csv$",sep=""))
-      out<-read.csv(paste("TF_data_files/GEMPeaks/",file.name,sep=""),sep=",")
+      file.name<-list.files(path="TF_data_files/Data/",pattern=paste(input$TFs,"(.*)_GEManalysis_(.*).csv$",sep=""))
+      out<-read.csv(paste("TF_data_files/Data/",file.name,sep=""),sep=",")
     
       write.csv(out, file, row.names = FALSE)
     }

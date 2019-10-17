@@ -33,7 +33,8 @@ suppressMessages(library(IRanges))
 suppressMessages(library(shinycssloaders))
 suppressMessages(library(sna))
 suppressMessages(library(shinyFiles))
-library(shinyjs)
+suppressMessages(library(shinyjs))
+suppressMessages(library(shinyBS))
 
 # Define UI 
 fluidPage(
@@ -113,7 +114,7 @@ fluidPage(
                                 textInput("SeqMax", label=h5("To"),value = ""),
                                 textOutput("Sequnce_out"),
                                 actionButton("SeqFind","Search", value = F),
-                                selectInput("ReadsData", "Download Data",c("Glu","Nit","Eth","Ana"), selected="Glu", selectize=TRUE),
+                                uiOutput("ReadsDown"),
                                 h5("Download the displayed reads"),
                                 downloadButton("downloadreadsData", "Download Reads"))
                                 ),   
@@ -141,16 +142,19 @@ fluidPage(
                                       textInput("goterm", "GO-term", value="Amino acid"),
                                       h6("To include more GO-terms add + inbetween."),
                                       selectInput("test", "Test",c("Fisher","Heatmap","Network","Cluster","Linear Model"), selected="Fisher", selectize=TRUE),
-                                      textOutput("selectInput"),
+                                      
+                                      
                                       conditionalPanel(
                                         condition = "input.test == 'Cluster'",
                                         sliderInput("slider1", label = h5("Number of cluster"), min = 1, 
                                                     max = 10, value = 5)),
                                       
                                       actionButton("search", "Search"),
+                                      h4(" "),
+                                      uiOutput("TestInput"),
                                       h4("The selected GO-terms from search result"),
                                       dataTableOutput("goterms"),
-                                      selectInput("StatData", "Download Data",c("Glu","Nit","Eth","Ana"), selected="Glu", selectize=TRUE),
+                                      uiOutput("StatDown"),
                                       downloadButton("downloadStatData", "Download")
                          ), 
                          
