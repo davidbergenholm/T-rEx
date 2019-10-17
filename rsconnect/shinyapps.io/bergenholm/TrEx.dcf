@@ -1,0 +1,12 @@
+name: TrEx
+title: TrEx
+username:
+account: bergenholm
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 1011892
+bundleId: 2202461
+url: https://bergenholm.shinyapps.io/TrEx/
+when: 1562326633.62921
+asMultiple: FALSE
+asStatic: FALSE

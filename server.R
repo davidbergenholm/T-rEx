@@ -5,7 +5,6 @@
 # Chalmers University of Technology
 # Department of Biology and Bioengineering
 
-
 #Set up the colors, conditions and the TFs used
 #For each new TF added a new color must be set and added in rinputs
 myColors.TF<-c("#a6cee3","#1f78b4","#ff9c63","#f16913","#b2df8a","#ffe60c","#33a02c","#3ab4f4","#5200aa","#e31a1c","#fdbf6f","#ff7f00","#115e0c","#cab2d6","#7fcdbb","#6a3d9a","#b0b227","#e20002","#dd3497","#b15928")
@@ -13,12 +12,15 @@ name.TF<-c("Cat8","Cbf1","Ert1","Gcn4","Gcr1","Gcr2","Hap1","Ino2","Ino4","Leu3"
 name.Cond<-c("Glu","Nit","Eth","Ana")
 colorset.TF<-as.character(t(myColors.TF))
 names(colorset.TF)<-as.character(t(name.TF))
-colorset.TF.df<-data.frame(name.TF,myColors.TF)
-
-
+#Make TF list
+TF_list<-c()
+for(tf in name.TF){
+  TF_list[tf]<-list(tf=tf)
+}
 
 #Load TSS start position
 TSS.start<-read.csv(paste("TF_data_files/Resources/","190704_TSSData.tsv",sep=""), sep="\t", header=TRUE)
+
 #Get the current genelist
 geneList<-data.frame(TSS.start$GeneName, TSS.start$Gene)
 colnames(geneList)<-c("Gene","GeneC")
@@ -26,77 +28,166 @@ gene.Systematic<-data.frame(geneList[,1])
 colnames(gene.Systematic)<-c("GeneS")
 gene.Common<-data.frame(geneList[,2])
 colnames(gene.Common)<-c("GeneC")
-#Load metabolic genes from Yeast7
-metabolicgenes<-read.csv(paste("TF_data_files/Resources/","Yeast8_genes.csv",sep=""),sep=";", header=TRUE)
-#Load TATA and GTF positions. GTF is not used in this version 
-TATA.GTF.file<-read.csv(paste("TF_data_files/Resources/","TATA_pos.csv",sep=""),sep=";", header=TRUE)
-#Load Sequence for each Gene
-Geneseq<-read.csv(paste("TF_data_files/Resources/","TSS_anotation_seq.bed",sep=""),sep="\t",header = FALSE )
-#Load TPM
-TPM_data<-read.csv(paste("TF_data_files/Resources/","TPM.csv",sep=""),sep=";")
+
+#Load metabolic genes from Yeast8
+metabolicgenes <-tryCatch({read.csv(paste("TF_data_files/Resources/","Yeast8_genes.csv",sep=""),sep=";", header=TRUE)},
+                    error=function(file){
+                      dummyvec<-data.frame(t(rep(NA, 1)))
+                      colnames(dummyvec)<-c("Gene")
+                      return(dummyvec) })
+
+#Load TATA position, realigned from S288C to Cen.PK
+TATA.file <-tryCatch({read.cssv(paste("TF_data_files/Resources/","TATA_pos.csv",sep=""),sep=";", header=TRUE)},
+                    error=function(file){
+                      dummyvec<-data.frame(t(rep(NA, 3)))
+                      colnames(dummyvec)<-c("gene_id", "gene_common","TATA_cen_pos")
+                      return(dummyvec) })
+
+#Load Sequence for each Gene, 2000 bp centered around TSS
+Geneseq <-tryCatch({read.csv(paste("TF_data_files/Resources/","TSS_anotation_seq.bed",sep=""),sep="\t",header = FALSE )},
+                    error=function(file){
+                      dummyvec<-data.frame(t(rep(NA, 3)))
+                      colnames(dummyvec)<-c("Gene","Strand","Seq")
+                      return(dummyvec) })
+
+#Load TPM for genes in each condition
+TPM.data <-tryCatch({read.csv(paste("TF_data_files/Resources/","TPM.csv",sep=""),sep=";")},
+                    error=function(file){
+                      NRcond<-t(rep(2, (length(name.Cond))))
+                      dummyvec<-data.frame(geneList, NRcond)
+                      colnames(dummyvec)<-c("Gene","CommonName",name.Cond)
+                      return(dummyvec) })
+
 #create dataframes for TFs
 x  <- matrix(1:2000)
 x.three<-seq(1,2000,3)
 
-Reads_func<- function(tf,cond) {
-  p = read.csv(paste("TF_data_files/WigLike/",tf,"_",cond,"_ol_combRep_geneAssigned_190314.wigLike",sep=""),header = FALSE,sep = "\t")
-  }
-#Load GEM peaks 
-for (i in name.TF){
-  if(i=="Cat8"){
-    datafile<-read.csv(paste("TF_data_files/GEMPeaks/",i,"_GEManalysis_190314.csv",sep=""),sep=",")
-    datafile$TF<-i
-  }else{
-    datafile2<-read.csv(paste("TF_data_files/GEMPeaks/",i,"_GEManalysis_190314.csv",sep=""),sep=",")
-    datafile2$TF<-i
-    datafile<-rbind(datafile,datafile2)}
-  datafile_Peaks<-datafile
-}
-
-for (i in name.TF){
-  if(i=="Cat8"){
-    datafile<-read.csv(paste("TF_data_files/GEMPeaks/",i,"_geneTargetList_190314.csv",sep=""),sep=",")
-    datafile$TF<-i
-  }
-  datafile2<-read.csv(paste("TF_data_files/GEMPeaks/",i,"_geneTargetList_190314.csv",sep=""),sep=",")
-  datafile2$TF<-i
-  datafile_SumPeaks<-rbind(datafile,datafile2)
-}
-#Generate data for statistical analysis 
-for (c in name.Cond){
-  data_out<-geneList
-  for (i in name.TF){
-    datafile<-read.csv(paste("TF_data_files/GEMPeaks/",i,"_geneTargetList_190314.csv",sep=""),sep=",")
-    condTF<-datafile[names(datafile) == c] 
-    datafile.2<-data.frame(datafile$X,condTF)
-    colnames(datafile.2)<-c("GeneC",i)
-    data_out<-merge(data_out,datafile.2, by="GeneC", all=TRUE)
-  }
-  assign(paste(c,"_Peaks", sep=""),data_out)
-}
-
-
-
-
 ####Load GO-terms located in the gogenes file, if not then load from Ensembl
-# mtry <- try(read.csv(paste("TF_data_files/Resources/","gogenes.csv",sep=""),sep=";"), 
-#             silent = TRUE)
-# if (class(mtry) != "try-error") {
-#   go_bio<-read.csv(paste("TF_data_files/Resources/","gogenes.csv",sep=""),sep=";")
-# } else {
-  # message("File doesn't exist, loading from Ensembl")
+mtry <- try(read.csv(paste("TF_data_files/Resources/","gogenes.csv",sep=""),sep=";"), 
+            silent = TRUE)
+if (class(mtry) != "try-error") {
+  go_bio<-read.csv(paste("TF_data_files/Resources/","gogenes.csv",sep=""),sep=";")
+} else {
+  message("File doesn't exist, loading from Ensembl")
   ensembl=useMart("ENSEMBL_MART_ENSEMBL", "scerevisiae_gene_ensembl", host="www.ensembl.org")
   gogenes<-getBM(attributes=c('ensembl_gene_id','name_1006','namespace_1003'),mart=ensembl)
   
   go_bio<-gogenes[grep("biological_process",gogenes$namespace_1003),] # Select only Biological Process
   go_bio<-suppressMessages(remove.vars(go_bio,c("namespace_1003")))
   
-# }
+}
 go_bio_unique<-data.frame(unique(go_bio$name_1006))
 
+#Load GEM peaks 
+for (i in name.TF){
+  if(i==name.TF[1]){
+    file.name<-list.files(path="TF_data_files/Data/",pattern=paste(i,"(.*)_GEManalysis_(.*).csv$",sep=""))
+    datafile <-tryCatch({read.csv(paste0("TF_data_files/Data/", file.name),sep=",")},
+                           error=function(file){
+                             dummyvec<-data.frame(NA,NA,NA,NA,NA,NA,NA,NA,NA)
+                             colnames(dummyvec)<-c("X","Gene","Chr","Pos","Strand","DistanceTSS","Strength","Condition","TF")
+                             return(dummyvec) })
+    datafile$TF<-i
+  }else{
+    file.name<-list.files(path="TF_data_files/Data/",pattern=paste(i,"(.*)_GEManalysis_(.*).csv$",sep=""))
+    datafile2 <-tryCatch({read.csv(paste0("TF_data_files/Data/", file.name),sep=",")},
+                        error=function(file){
+                          dummyvec<-data.frame(NA,NA,NA,NA,NA,NA,NA,NA,NA)
+                          colnames(dummyvec)<-c("X","Gene","Chr","Pos","Strand","DistanceTSS","Strength","Condition","TF")
+                          return(dummyvec) })
+    datafile2$TF<-i
+    datafile<-rbind(datafile,datafile2)}
+    datafile_Peaks<-datafile
+  
+}
+
+#Generates the Transcription Factor Binding Data
+Reads_func<- function(tf,cond,data.New.TF) {
+  if(tf=="New_TF"){
+    p=data.New.TF[[paste("WigLike",cond,sep="")]]
+    return(p)
+  }else{
+    file.name<-list.files(path="TF_data_files/Data/",pattern=paste(tf,"_",cond,"_ol_combRep_geneAssigned(.*).wigLike$",sep=""))
+    p<-tryCatch({read.csv(paste0("TF_data_files/Data/", file.name),sep="\t",header=FALSE)},
+                         error=function(file){
+                           dummyvec<-data.frame(NA,NA,NA)
+                           return(dummyvec) })
+  }}
+
+#Generate the motif, sequence map and the peak distribution images
+motif_func<-function(input.TF, condition){
+  out<-list(
+    src = paste("TF_data_files/Data/",input.TF,"_",condition,"_logo1.png",sep=""),
+    contentType = "image/png",
+    alt = "motif",
+    height    = 100,
+    units     = "in"
+  )
+  return(out)
+}
+seq_map_func<-function(input.TF, condition){
+  out<-list(
+    src = paste("TF_data_files/Data/",input.TF,"_",condition,"_SeqMap.png",sep=""),
+    contentType = "image/png",
+    alt = "seq_map",
+    height    = 100,
+    units     = "in"
+  )
+  return(out)
+}
+peak_dist_func<-function(input.TF, condition){
+   name.file<-list.files(path="TF_data_Files/Data", pattern=paste(input.TF,"_",condition,"_PeakHistogram(.*).png", sep=""))
+
+  out<-list(
+    
+    src = paste("TF_data_files/Data/",name.file,sep=""),
+    contentType = "image/png",
+    alt = "peak_dist",
+    height    = 170,
+    units     = "in"
+  )
+  return(out)
+}
 
 
-###Functions for generating Fisherplots, Net plots, models or Clusters
+Stat_plot_func<-function(val1,downloadVal,conditionname,goterm,name.TF,Test,New.TF,nclu){
+  GOterm.name<-unlist(strsplit(tolower(goterm), "[+]"))
+  GOterm.Data<-goterm_func(GOterm.name)
+  totalgenes<-nrow(GOterm.Data)
+  ####The data
+
+  Stat.Data<-Stat_data_func(name.TF,conditionname,New.TF$Targets)
+  Stat.GOterm.data<-data_func(Stat.Data,conditionname,GOterm.Data,val1)
+  Treated.Data<-data_treatment_func(Stat.GOterm.data$data1, conditionname,name.TF)
+  txtstr<-paste( "Selected genes", nrow(Treated.Data$x),"of total",totalgenes)
+  data<-cbind(Treated.Data$y,Treated.Data$x)
+  ###Fisher
+  if(Test=="Fisher"){
+    p1<-fishers_test_func(Treated.Data$x, txtstr,downloadVal)
+                 
+  }
+  if(Test=="Heatmap"){
+    ##### Only data heatmap
+    p1<-heatmap_func(data,txtstr,downloadVal)
+    
+  }
+  if(Test=="Network"){
+    p1<-net_func(Treated.Data$x, txtstr)
+    
+  }
+  if(Test=="Cluster"){
+    p1<-cluster_func(Treated.Data$x,downloadVal, nclu)
+    
+  }
+  if(Test=="Linear Model"){
+    # datalin<-cbind(Treated.Data$y,Treated.Data$x)
+    #zero interaction
+    p1<- model_zero_func(data, txtstr,downloadVal,name.TF)
+  }
+  
+  p1
+}
+##Find the GO-term and the genes
 goterm_func <- function(datain) {
   ####Locates the GO-terms included in the users searchterm
   pathways.name<-datain
@@ -106,10 +197,35 @@ goterm_func <- function(datain) {
   colnames(pathways.gene)<-"Gene"
   return(pathways.gene)
 }
-data_func<- function(datain,pathway.val,val1,val2) {
+#Generate data for statistical analysis 
+Stat_data_func<-function(tf,cond,data.New.TF) {
+  data_out<-geneList
+  for (i in tf){
+    if(i=="New_TF"){
+      datafile<-data.New.TF
+      condTF<-datafile[names(datafile) == cond] 
+      datafile.2<-data.frame(datafile$X,condTF)
+      colnames(datafile.2)<-c("GeneC",i)
+      data_out<-merge(data_out,datafile.2, by="GeneC", all=TRUE)
+    }else{
+      name<-list.files(path="TF_data_files/GEMPeaks/",pattern=paste(i,"_geneTargetList_(.*).csv$",sep=""))
+      datafile <-tryCatch({read.csv(paste0("TF_data_files/GEMPeaks/",name),sep=",")},
+                         error=function(file){
+                           dummyvec<-data.frame(t(rep(NA, (length(name.Cond)+1))))
+                           colnames(dummyvec)<-c("X",name.Cond)
+                           return(dummyvec) })
+      
+      condTF<-datafile[names(datafile) == cond] 
+      datafile.2<-data.frame(datafile$X,condTF)
+      colnames(datafile.2)<-c("GeneC",i)
+      data_out<-merge(data_out,datafile.2, by="GeneC", all=TRUE)
+    }}
+  return(data_out)
+  
+}
+data_func<- function(Stat.Data,datain,pathway.val,val1) {
   ####Generates the data used, if Yeast8 and dubious is or isn't selected
-  dataset<-c("_Peaks","_Peaks_SN","_Sum")
-  data1<-get(paste(datain,dataset[val2], sep=""))
+  data1<-Stat.Data
   ####Remove non-metabolic genes
   if (val1==1){
     data1<-merge(data1,metabolicgenes,by="Gene")
@@ -119,27 +235,24 @@ data_func<- function(datain,pathway.val,val1,val2) {
   if(is.null(data1)){data1<-c("Gene"="empty")}
   return(list("data1"=data1))
 }
-data_treatment_func <- function(datain1,datain2,datain3, val2, name.Cond) {
-  y1<-datain1
-  x1<-datain2
-  rownames(x1)<-datain3$CommonName
+data_treatment_func <- function(data1, condname,name.TF) {
+
+  data1<-merge(data1, TPM.data, by="Gene")
+  y1<-data1[condname]
+  x1<-data1[,name.TF]
+  rownames(x1)<-data1$CommonName
   ####Only include genes which has a TPM above 1
   x1<-x1[y1>1,]
   x1[is.na(x1)]<-0
   y1<-y1[y1>1]
   y1<-log2(y1)
-  if (val2==3){
-    data1<-get(paste(name.Cond,"_Sum", sep=""))
-    data1<-data1[complete.cases(data1), ]
-    av<-mean(as.matrix(data1[,2:length(name.TF)]))
-    x1[x1<(0.5*av)]<-0
-  }
-  ####only include genes which has at least one binding or binding higher than 50% average 
+  ####only include genes which has at least one binding 
   y1<-y1[rowSums(x1)>0]
   x1<-x1[rowSums(x1)>0,]
   x1[is.na(x1)]<-0
   return(list("y"=y1,"x"=x1))
 }
+###Functions for generating Fisherplots, Heatmap, Net plot, Linear Model or Clusters
 fishers_test_func <- function(datain, txtstr1,outputval) {
   df1<-as.data.frame(datain)
   df1[df1>0]<-1
@@ -149,6 +262,7 @@ fishers_test_func <- function(datain, txtstr1,outputval) {
   #### loop over the different TFs
   for (i in 1:length(df1))  {
     for (o in 1:length(df1)) {
+     
       first <- ifelse(df1[i]>0,"Bound","NotBound")
       second <- ifelse(df1[o]>0,"Bound","NotBound")
       
@@ -157,7 +271,7 @@ fishers_test_func <- function(datain, txtstr1,outputval) {
         rownames(rand.not)<-"Rand"
         first<-rbind(first,rand.not)
         second<-rbind(second,rand.not) 
-        
+       
       }
       if (any(grepl("^NotBound$", second))==FALSE) {
         rand.not<-cbind("NotBound")
@@ -168,7 +282,6 @@ fishers_test_func <- function(datain, txtstr1,outputval) {
       }
       if (any(grepl("^Bound$", first))==TRUE) {
         if (any(grepl("^Bound$", second))==TRUE) {
-          
           fishers<-fisher.test(table(first,second))
           fishertable1[i,o]<-fishers$p.value
           fishertableodds1[i,o]<-fishers$estimate
@@ -220,19 +333,36 @@ fishers_test_func <- function(datain, txtstr1,outputval) {
     cln<-c(1:(ncol(fishertable1)+1))
     pCol<-data.frame(t(c("pVal",rep("",2,ncol(fishertable1)))))
     odCol<-data.frame(t(c("Oddsratio",rep("",2,ncol(fishertable1)))))
-    fishertable1<-data.frame(cbind(rownames(fishertable1),fishertable1))
-    fishertableodds1<-data.frame(cbind(rownames(fishertableodds1),as.matrix(fishertableodds1)))
-    pName<-data.frame(t(colnames(fishertable1)))
+    fishertable2<-data.frame(cbind(rownames(fishertable1),as.matrix(fishertable1)))
+    fishertableodds2<-data.frame(cbind(rownames(fishertableodds1),as.matrix(fishertableodds1)))
+    pName<-data.frame(t(colnames(fishertable2)))
     
-    colnames(fishertableodds1)<-cln
-    colnames(fishertable1)<-cln
+    colnames(fishertableodds2)<-cln
+    colnames(fishertable2)<-cln
     colnames(pName)<-cln
     colnames(pCol)<-cln
     colnames(odCol)<-cln
     
-    out.df<-data.frame(rbind(pCol,pName,fishertable1,odCol,pName,fishertableodds1))
+    out.df<-data.frame(rbind(pCol,pName,fishertable2,odCol,pName,fishertableodds2))
     return(out.df)
   }
+}
+heatmap_func<-function(datain,txtstr,outputval){
+  ####Generates a normalized heatmap of all the genes and TFs in the selected GO-terms
+  cmap <- colorRampPalette(brewer.pal(9,"Blues"))(256)
+  data<-datain
+  datamap<-as.matrix(data[,-1])
+  datamap[is.infinite(datamap)]<-0
+  datamap[datamap>1]<-1
+  p1<-heatmap.2(datamap,col=cmap, tracecol=NA, main=txtstr)
+  if(outputval==1){
+    return(p1)}
+  else{
+    data2<-cbind(row.names(data),data[,-1])
+    data2name<-c("Gene",colnames(data[,-1]))
+    data2<-rbind(data2name,data2)
+    out.df<-data2
+    return(out.df)}
 }
 net_func<-function(datain, txtstr){
   ####Generates the network plots
@@ -250,14 +380,13 @@ net_func<-function(datain, txtstr){
                        ignore.eval = FALSE,
                        names.eval  = "weights")
   col <- c("Gene" = "#BAD0F0", "TF" = "#3F7DD3")
-  nodsiz = c("Gene" = 1, "TF" = 11)
   tfNetwork %v% "Legend" = ifelse(network.vertex.names(tfNetwork) %in% rownames(netMatrix), "Gene", "TF")
   ggnet2(tfNetwork, alpha = 0.8, color.legend="Legend",size.legend="Connections",color.palette=col,label.size=3,label.color = "#404449", node.size="cent", node.color="Legend", size="degree",size.min=1,node.label = colnames(netMatrix), layout.par = list(niter = 1000), edge.size = 0.1)+ 
     guides(size = FALSE)+
     labs(title=txtstr)+theme_void()
   
 }
-model_zero_func<-function(datain, txtstr, outputval){
+model_zero_func<-function(datain, txtstr, outputval,name.TF){
   ####Generates the linear model for the selected GO-terms
   modTF="y~"
   for(i in 1:length(name.TF)){
@@ -266,7 +395,7 @@ model_zero_func<-function(datain, txtstr, outputval){
   modTF<-substr(modTF,1,nchar(modTF)-1)
   
   
-  colnames(datain)[colnames(datain)=="data.list2$y"] <- "y"
+  colnames(datain)[colnames(datain)=="Treated.Data$y"] <- "y"
   lm.test<-lm(modTF,datain)
   #dev.off()
   
@@ -309,8 +438,8 @@ cluster_func<-function(datain,outputval,nclu){
   data<-datain
   xclus<-as.matrix(data)
   xclus[which(!is.finite(xclus))] <- 0
-  mydata <- na.omit(xclus) # listwise deletion of missing
-  mydata <- scale(xclus) # standardize variables
+  mydata <- na.omit(xclus) 
+  mydata <- scale(xclus)
   mydata <- mydata[,colSums(is.na(mydata))<nrow(mydata)]
   pam.mydata= pam(mydata, nclu)
   p1<-fviz_cluster(pam.mydata, ggtheme=theme_pubr(),main=NULL)
@@ -333,35 +462,20 @@ cluster_func<-function(datain,outputval,nclu){
     return(out.df)
   }
 }
-heatmap_func<-function(datain,txtstr,outputval){
-  ####Generates a normalized heatmap of all the genes and TFs in the selected GO-terms
-  cmap <- colorRampPalette(brewer.pal(9,"Blues"))(256)
-  data<-datain
-  datamap<-as.matrix(data[,-1])
-  datamap[is.infinite(datamap)]<-0
-  datamap[datamap>1]<-1
-  p1<-heatmap.2(datamap,col=cmap, tracecol=NA, main=txtstr)
-  if(outputval==1){
-    return(p1)}
-  else{
-    data2<-cbind(row.names(data),data[,-1])
-    data2name<-c("Gene",colnames(data[,-1]))
-    data2<-rbind(data2name,data2)
-    out.df<-data2
-    return(out.df)}
-}
-alphaval=0.7
 
-profile_plot_func<-function(TATA_GTF.df,temp_cond, x,Curr.Geneseq,ranges,colorset.TF, data.BS, ATGC, input,yRanges,Gene_start,TPM, motiffinder){
-  
+
+###Plotfunction for read profiles
+alphaval=0.7
+profile_plot_func<-function(TATA.df,temp_cond,x,Curr.Geneseq,ranges,colors.TF, data.BS, ATGC, input,yRanges,Gene_start,TPM, motiffinder){
+ 
   start.h<- max(3,temp_cond$y)
   if(input$yranges==TRUE){
     start.h<- max(yRanges)
   }
   p1 <- ggplot()+
     #Tatabox
-  {if(input$GTF)geom_text(aes(x=TATA_GTF.df[1,1],y=1*start.h*0.03,label=TATA_GTF.df[1,3]),hjust=0, vjust=-0.5)}+
-  {if(input$GTF)annotate("rect", xmin=TATA_GTF.df[1,]$x, xmax=TATA_GTF.df[1,]$y, ymin=(-1)*start.h*0.03 , ymax=1*start.h*0.03, alpha=alphaval, fill="Black" )}+
+  {if(input$TATA)geom_text(aes(x=TATA.df[1,1],y=1*start.h*0.03,label=TATA.df[1,3]),hjust=0, vjust=-0.5)}+
+  {if(input$TATA)annotate("rect", xmin=TATA.df[1,]$x, xmax=TATA.df[1,]$y, ymin=(-1)*start.h*0.03 , ymax=1*start.h*0.03, alpha=alphaval, fill="Black" )}+
     #TF binding
     geom_line(data = temp_cond, aes(x = x, y = y, color = temp_cond$TF),size=1)+
     labs(colour = "TF")+
@@ -382,7 +496,7 @@ profile_plot_func<-function(TATA_GTF.df,temp_cond, x,Curr.Geneseq,ranges,colorse
     geom_hline(yintercept = 0)+
     geom_text(aes(x=1002, y=start.h*0.7,label="TSS"), color="black",hjust=0)+
     #Set the colors legend for each TF and how many should be in ech column
-    scale_color_manual(values=colorset.TF)+
+    scale_color_manual(values=colors.TF)+
     guides(col = guide_legend(ncol = 3, nrow=8))+
     #Include GEM identified BS
     {if(input$TF_BS) annotate("rect", xmin=data.BS$x1, xmax=data.BS$x2, ymin=data.BS$y1*start.h*0.03 , ymax=data.BS$y2*start.h*0.03, alpha=alphaval, fill=data.BS$colval )}+
@@ -401,32 +515,154 @@ profile_plot_func<-function(TATA_GTF.df,temp_cond, x,Curr.Geneseq,ranges,colorse
 
 
 function(input, output) {
+  rdata.New.TF<-reactive({
+        if(!input$submit1){
+          for(cond in name.Cond){
+            out_list<-c()
+            WigLike<-NULL
+            Wigname<-paste("wigLike",cond,sep="")
+            out_list[Wigname]<-list(WigLike)
+            out_list["GEManalysis"]<-NULL
+            out_list["Targets"]<-NULL}
+          
+        }else{
+          out_list<-c()
+          withProgress(message = 'Uploading data',value = 0.1, {
+          names<-c()
+          name.file<-input$files[,1]
+          for(cond in name.Cond){
+          nameidx<-grep(paste("(.*)",cond,"(.*)wigLike$",sep=""),name.file)
+          
+          WigLike<-tryCatch({read.csv(input$files[[nameidx, 'datapath']],sep="\t",header=FALSE)},
+                       error=function(file){
+                         dummyvec<-data.frame(NA,NA,NA)
+                         return(dummyvec) })
+          
+          names<-c(names,name.file[nameidx], sep="\n")
+          Wigname<-paste("WigLike",cond,sep="")
+          out_list[Wigname]<-list(WigLike)
+          incProgress(0.7/length(name.Cond))
+          }
+          nameidx<-grep("(.*)_GEManalysis_(.*).csv$",name.file)
+            
+            names<-c(names,name.file[nameidx], sep="\n")
+            GEManalysis <-tryCatch({read.csv(input$files[[nameidx, 'datapath']],sep=",")},
+                                 error=function(file){
+                                   dummyvec<-data.frame(NA,NA,NA,NA,NA,NA,NA,NA,NA)
+                                   colnames(dummyvec)<-c("X","Gene","Chr","Pos","Strand","DistanceTSS","Strength","Condition","TF")
+                                   return(dummyvec) })
+          incProgress(0.1)
+          nameidx<-grep("(.*)Target(.*)csv$",name.file)
+          names<-c(names,name.file[nameidx], sep="\n")
+          Targets <-tryCatch({read.csv(input$files[[nameidx, 'datapath']],sep=",")},
+                                error=function(file){
+                                  dummyvec<-data.frame(t(rep(NA, (length(name.Cond)+1))))
+                                  colnames(dummyvec)<-c("X",name.Cond)
+                                  return(dummyvec) })
+          incProgress(0.1)
+          output$text3<-renderText({names})
+          out_list["GEManalysis"]<-list(GEManalysis)
+          out_list["Targets"]<-list(Targets)
+          })}
+        return(out_list)
+        })
+  observeEvent(input$submit1,{
+    call.data<-rdata.New.TF()
+    output$text2<-renderText({"Data uploaded succesfully"})
+  })
+  rname.TF<-reactive({
+    name.TF<-name.TF
+    if(!input$submit1){name.TF<-name.TF}else{
+      name.TF<-c(name.TF,"New_TF")
+    }
+    return(name.TF)
+  })
+  rmyColors.TF<-reactive({
+    if(!input$submit1){ myColors.TF<-myColors.TF}else{
+      myColors.TF<-c(myColors.TF,"black")
+    }
+    return(myColors.TF)
+  })
+  rdatafile_Peaks<-reactive({
+    if(!input$submit1){
+      datafile_Peaks<-datafile_Peaks}else{
+        Gemanalysis<-rdata.New.TF()$GEManalysis
+        Gemanalysis$TF<-"New_TF"
+      datafile_Peaks<-rbind(datafile_Peaks,Gemanalysis)
+      }
+    return(datafile_Peaks)
+    })
+
+  output$Checkbox1<-renderUI({checkboxGroupInput("checkboxgrp1", "TFs", TF_list[1:(length(TF_list)/2)])})
+  output$Checkbox2<-renderUI({checkboxGroupInput("checkboxgrp2", "TFs", TF_list[(length(TF_list)/2+1):length(TF_list)])})
+  
+  output$radioOut <- renderUI({
+    if(input$submit1){
+      new_list<-TF_list
+      new_list[["New_TF"]]<-"New_TF"
+      radioButtons("TFs","",new_list)}else{return(radioButtons("TFs","",TF_list))}
+  })
+  output$checkTF <- renderUI({
+    if(input$submit1){
+      checkboxInput("New_TF","New_TF",value=T)}else{return(NULL)}
+  })
+  output$text<-renderUI({
+    geneS<-gene.Systematic
+    geneC<-gene.Common
+    colnames(geneS)<-"Systematic"
+    colnames(geneC)<-"Common"
+    autocomplete_list<-cbind(geneS,geneC)
+    selectizeInput(inputId = "text",
+                   label = "Select Gene",
+                   choices = autocomplete_list,
+                   selected = "GDH3",
+                   multiple = FALSE, 
+                   options = list(create = FALSE)) 
+  })
+  New_TF<- reactive({
+    if(input$submit1){
+      New_TF<-TRUE}else{New_TF<-FALSE}
+  })
   rinputs<-reactive({
-    #Add TF
-    inputs<-data.frame(input$Cat8, input$Cbf1,input$Ert1, input$Gcn4, input$Gcr1, input$Gcr2,input$Hap1,input$Ino2,input$Ino4,input$Leu3,input$Oaf1,input$Pip2,input$Rds2,input$Rgt1,input$Rtg1,input$Rtg3,input$Sip4,input$Stb5,input$Sut1,input$Tye7)
-    inputs})
+    activeTF<-c(input$checkboxgrp1[],input$checkboxgrp2[])
+    inputs<-c()
+    for(i in name.TF){
+      inputs[i]<-FALSE
+      if(!is.null(activeTF)){
+        for(o in 1:length(activeTF)){
+            if( as.character(activeTF[o])==as.character(i)){
+              inputs[i]<-TRUE
+            }
+        }
+      }
+    }
+     inputs["New_TF"]<-New_TF()
+     return(inputs)
+     })
   ranges <- reactiveValues(x = NULL, y = NULL)
   rGeneidx<-eventReactive(input$Load,{
+    if(!input$text==""){
     input.text<-toupper(input$text)
     Geneidx<-grep(paste("^",input.text,"$",sep=""), as.character(gene.Common[,1]))
     if (length(Geneidx)==0){
       Geneidx<-grep(paste("^",input.text,"$",sep=""), as.character(gene.Systematic[,1]))
     }
-    Geneidx
+    return(Geneidx)
+    }else{return(NULL)}
   })
 
   rpeak.dist.data<-eventReactive(input$Load, {
    inputs<-rinputs()
-    for (i in 1:4){
-      for (o in 1:length(name.TF)){
+   peak.dist.data<-c()
+   for (cond in name.Cond){
+      for (o in 1:length(rname.TF())){
         if(inputs[o]==TRUE){
-          p  <-Reads_func(name.TF[o],name.Cond[i])
-
+          p  <-Reads_func(rname.TF()[o],cond,rdata.New.TF())
           lineDataCond=matrix(0L,nrow=1, ncol=2000)
           lineDataCond[1,p[p[,1]==as.character(gene.Common[rGeneidx(),1]),2]+1]<-p[p[,1]==as.character(gene.Common[rGeneidx(),1]),3]
           #Take every third data point
           y<-lineDataCond[,seq(1,2000,3)]
-          data.dist<-data.frame(x.three,y,name.TF[o])
+          data.dist<-data.frame(x.three,y,rname.TF()[o])
           colnames(data.dist)<-c("x","y","TF")
         }else{data.dist=(NULL)}
         if (o==1){
@@ -434,30 +670,20 @@ function(input, output) {
         }else{
           temp.dist<-rbind(temp.dist, data.dist)
         }
-        
       }
-      if(i==1){
-        
-        tflist_Glu<-temp.dist}
-      if(i==2){
-        
-        tflist_Nit<-temp.dist}
-      if(i==3){
-        
-        tflist_Eth<-temp.dist}
-      if(i==4){
-        
-        tflist_Ana<-temp.dist}
+
+      peak.dist.data[cond]<-list(temp.dist)
     }
-    return(peak.dist.data<-list("tflist_Glu"=tflist_Glu,"tflist_Eth"=tflist_Eth,"tflist_Nit"=tflist_Nit,"tflist_Ana"=tflist_Ana))
+    return(peak.dist.data)
     })
-  rBS<-reactive({
-    
-    if(input$TF_BS==TRUE){
+  rBS<-eventReactive(input$Load,{
+      BS<-c()
       input.gene<-as.character(gene.Systematic[rGeneidx(),1])
       input.gene2<-as.character(gene.Common[rGeneidx(),1])
-      for(i in 1:4){
-        tempfile3<-subset(datafile_Peaks, datafile_Peaks$Gene == input.gene2 & datafile_Peaks$Condition == name.Cond[i] )#& datafile$S>4)
+      for(cond in name.Cond){
+        datafile_Peaks<-rdatafile_Peaks()
+        tempfile3<-subset(datafile_Peaks, datafile_Peaks$Gene == input.gene2 & datafile_Peaks$Condition == cond )
+       
         x1<-c()
         x2<-c()
         y1<-c()
@@ -466,7 +692,7 @@ function(input, output) {
         colval<-c()
         #Check if tempfile3 isn't 0
         if(nrow(tempfile3)>0){
-          pos<-1000-as.numeric(tempfile3$DistanceTSS)
+          pos<-1000+as.numeric(tempfile3$DistanceTSS)
           #Generate the vector for plotting 
           for(j in 1:(length(pos))){
             x1[j]<-pos[j]-5
@@ -474,7 +700,7 @@ function(input, output) {
             y1[j]<-0.1
             y2[j]<-(-3.1)
             t[j]<-as.character(tempfile3$TF[j])
-            colval[j]<-as.character(subset(colorset.TF.df$myColors, colorset.TF.df$name.TF == as.character(tempfile3$TF[j])))
+            colval[j]<-as.character(subset(rmyColors.TF(), rname.TF() == as.character(tempfile3$TF[j])))
           }
         }else{
           x1<-0
@@ -486,13 +712,9 @@ function(input, output) {
         d=data.frame(x1, x2, y1, y2, t, colval)
         #Removes a BS if it is further than 1 or 2000 bp
         d<-subset(d, d$x1 > -1 & d$x2<2001)
-        if(i==1){d.Glu<-d}
-        if(i==2){d.Nit<-d}
-        if(i==3){d.Eth<-d}
-        if(i==4){d.Ana<-d}
+        BS[cond]<-list(d)
       }
-      d<-list("d.Glu"=d.Glu,"d.Eth"=d.Eth,"d.Nit"=d.Nit,"d.Ana"=d.Ana)
-    }
+      return(BS)
   })
   rCurr.Geneseq<-reactive({
     if(is.null(ranges$x[1])==TRUE || sum(ranges$x[2]-ranges$x[1])>200){
@@ -523,14 +745,11 @@ function(input, output) {
   })
   ryRanges<-reactive({
     if(input$yranges==TRUE){
-      peak.dist.data<-rpeak.dist.data()
-      max.temp.glu<-max(peak.dist.data$tflist_Glu["y"])
-      max.temp.eth<-max(peak.dist.data$tflist_Eth["y"])
-      max.temp.ana<-max(peak.dist.data$tflist_Ana["y"])
-      max.temp.nit<-max(peak.dist.data$tflist_Nit["y"])
-      
-      max.yRanges<-max(c(max.temp.glu,max.temp.eth,max.temp.ana,max.temp.nit))
-      
+      max.temp<-c()
+      for(cond in name.Cond){
+        max.temp[cond]<-max(rpeak.dist.data()[[cond]]["y"])
+      }
+      max.yRanges<-max(max.temp[])
       if(is.infinite(max.yRanges) ==TRUE){
         yRanges <-c(-0.1,1)
         names(yRanges)<-c("ymin","ymax")
@@ -542,16 +761,14 @@ function(input, output) {
       }
     }
   })
-  rTATA_GTF<-reactive({
-    if(input$GTF==TRUE){
+  rTATA<-eventReactive(input$Load,{
       input.text<-toupper(input$text)
-      # input.text<-"ENO1"
-      Geneidx.tata<-grep(paste("^",input.text,"$",sep=""), as.character(TATA.GTF.file$gene_id) )
+      Geneidx.tata<-grep(paste("^",input.text,"$",sep=""), as.character(TATA.file$gene_id) )
       if (length(Geneidx.tata)==0){
-        Geneidx.tata<-grep(paste("^",input.text,"$",sep=""), as.character(TATA.GTF.file$gene_common))
+        Geneidx.tata<-grep(paste("^",input.text,"$",sep=""), as.character(TATA.file$gene_common))
       }
       
-      TATAbox<-TATA.GTF.file[Geneidx.tata,"TATA_cen_pos"]
+      TATAbox<-TATA.file[Geneidx.tata,"TATA_cen_pos"]
       if(is.na(TATAbox)==FALSE){
         TATAbox.x<-TATAbox-0.5
         TATAbox.y<-TATAbox+7.5
@@ -563,7 +780,6 @@ function(input, output) {
       colour<-c("grey")
       df<-data.frame(x=TATAbox.x, y=TATAbox.y,class=class,colour=colour)
       TATA_GTF.df<-df
-    }
   })
   
   rGene_start<-reactive({
@@ -579,14 +795,16 @@ function(input, output) {
     d=data.frame(x1, x2, y1, y2, t, colval)
   })
   rTPM<-reactive({
+    TPM<-c()
     input.gene<-as.character(gene.Systematic[rGeneidx(),1])
-    tempfile_tpm<-subset(TPM_data, TPM_data$Gene == input.gene)
-    TPM<-data.frame(tempfile_tpm$Glu.lim,tempfile_tpm$Nit.lim,tempfile_tpm$Eth.lim,tempfile_tpm$Ana.lim)
-    colnames(TPM)<-c("Glu","Nit","Eth","Ana")
+    tempfile.tpm<-subset(TPM.data, TPM.data$Gene == input.gene)
+    
+    for(cond in name.Cond){
+     TPM[cond]<-data.frame(tempfile.tpm[cond])
+     }
     TPM
   })
-  rMotiffinder<-reactive({
-    if(input$motiffinder==TRUE){
+  rMotiffinder<-eventReactive(input$motiffinder,{
       Geneidx<-rGeneidx()
       curr.geneSys<-gene.Systematic[Geneidx,1]
       Geneidx.seq<-grep(paste("^",curr.geneSys,"$",sep=""), as.character(Geneseq[,1]))
@@ -611,7 +829,6 @@ function(input, output) {
         y2<-c()
         colval<-c()
         if(is.null(length(start(pos.FW)))&&is.null(length(start(pos.RV))))return(null)
-        
         if(!is.null(length(start(pos.FW)))){
           for (i in 1:length(start(pos.FW))){
             x1[i]<-c(start(pos.FW)[i])
@@ -620,16 +837,13 @@ function(input, output) {
             y2[i]<-c(-1)
             colval[i]<-c("blue")
           }
-          
           d.FW<-data.frame(x1, x2, y1, y2, colval)
         }
-        
         x1<-c()
         x2<-c()
         y1<-c()
         y2<-c()
         colval<-c()
-        
         if(!is.null(length(start(pos.RV)))){
           for (i in 1:length(start(pos.RV))){
             x1[i]<-c(start(pos.RV)[i])
@@ -638,278 +852,42 @@ function(input, output) {
             y2[i]<-c(-1)
             colval[i]<-c("red")
           }
-          
           d.RV<-data.frame(x1, x2, y1, y2, colval)}
         if (j==1){
           d<-rbind(d.FW,d.RV)  
-          
         }
         if(j>1){
           d<-rbind(d,d.FW,d.RV)
-          
         }
-      }
-      
-      return(d)
-    }
+        return(d)}
   })
   rdataTarget<-reactive({
-    dataTarget<-read.csv(paste("TF_data_files/GEMPeaks/",input$TFs,"_geneTargetList_190314.csv",sep=""),sep=",")
-    colnames(dataTarget)<-c("Gene Common","Glu-lim","Nit-lim","Eth-lim","Ana-lim")
-    DT::datatable(dataTarget, rownames=FALSE, extensions = c('FixedColumns',"FixedHeader"), 
+
+  if(!is.null(input$TFs)){
+
+    if(input$TFs=="New_TF"){ 
+        dataTarget<-rdata.New.TF()$Targets
+    }else{
+      
+      name<-list.files(path="TF_data_files/GEMPeaks/",pattern=paste(input$TFs,"_geneTargetList_(.*).csv$",sep=""))
+      dataTarget <-tryCatch({read.csv(paste0("TF_data_files/GEMPeaks/",name),sep=",")},
+                          error=function(file){
+                            dummyvec<-data.frame(t(rep(NA, (length(name.Cond)+1))))
+                            colnames(dummyvec)<-c("X",name.Cond)
+                            return(dummyvec) })
+      }
+      colnames(dataTarget)[1]<-"Gene Common"
+         DT::datatable(dataTarget, rownames=FALSE, extensions = c('FixedColumns',"FixedHeader"), 
                   options = list(dom = 't', 
                                  scrollX = TRUE, 
                                  paging=FALSE,
                                  fixedHeader=TRUE,
                                  fixedColumns = list(leftColumns = 1, rightColumns = 0)))
+    
+      }else{dataTarget=NULL}
     return(dataTarget)
   })
   
-  output$table1 <- renderDataTable({ rdataTarget()}, options=list(pageLength=5))
-  output$motif_glu<-renderImage({
-    TFconsensusname<-paste("TF_data_files/Logos/",input$TFs,"_Glu_MEME/logo1.png",sep="")
-    return(list(
-      src = TFconsensusname,
-      contentType = "image/png",
-      alt = "motif",
-      height    = 100,
-      units     = "in"
-    ))
-    
-  },deleteFile = FALSE)
-  output$motif_nit<-renderImage({
-    TFconsensusname<-paste("TF_data_files//Logos/",input$TFs,"_Nit_MEME/logo1.png",sep="")
-    return(list(
-      src = TFconsensusname,
-      contentType = "image/png",
-      alt = "motif",
-      height    = 100,
-      units     = "in"
-    ))
-    
-  },deleteFile = FALSE)
-  output$motif_ana<-renderImage({
-    TFconsensusname<-paste("TF_data_files/Logos/",input$TFs,"_Ana_MEME/logo1.png",sep="")
-    return(list(
-      src = TFconsensusname,
-      contentType = "image/png",
-      alt = "motif",
-      height    = 100,
-      units     = "in"
-    ))
-    
-  },deleteFile = FALSE)
-  output$motif_eth<-renderImage({
-    TFconsensusname<-paste("TF_data_files/Logos/",input$TFs,"_Eth_MEME/logo1.png",sep="")
-    return(list(
-      src = TFconsensusname,
-      contentType = "image/png",
-      alt = "motif",
-      height    = 100,
-      units     = "in"
-    ))
-    
-  },deleteFile = FALSE)
-  
-  output$motif_glu_seq<-renderImage({
-    TFconsensusname<-paste("TF_data_files/Logos/",input$TFs,"_Glu_MEME/",input$TFs,"_Glu_SeqMap.png",sep="")
-    return(list(
-      src = TFconsensusname,
-      contentType = "image/png",
-      alt = "motif",
-      height    = 100,
-      units     = "in"
-    ))
-    
-  },deleteFile = FALSE)
-  output$motif_nit_seq<-renderImage({
-    TFconsensusname<-paste("TF_data_files/Logos/",input$TFs,"_Nit_MEME/",input$TFs,"_Nit_SeqMap.png",sep="")
-
-    return(list(
-      src = TFconsensusname,
-      contentType = "image/png",
-      alt = "motif",
-      height    = 100,
-      units     = "in"
-    ))
-    
-  },deleteFile = FALSE)
-  output$motif_ana_seq<-renderImage({
-    TFconsensusname<-paste("TF_data_files/Logos/",input$TFs,"_Ana_MEME/",input$TFs,"_Ana_SeqMap.png",sep="")
-    return(list(
-      src = TFconsensusname,
-      contentType = "image/png",
-      alt = "motif",
-      height    = 100,
-      units     = "in"
-    ))
-    },deleteFile = FALSE)
-  output$motif_eth_seq<-renderImage({
-    TFconsensusname<-paste("TF_data_files/Logos/",input$TFs,"_Eth_MEME/",input$TFs,"_Eth_SeqMap.png",sep="")
-    return(list(
-      src = TFconsensusname,
-      contentType = "image/png",
-      alt = "motif",
-      height    = 100,
-      units     = "in"
-    ))
-    
-  },deleteFile = FALSE)
-  
-  output$peakdist_glu<-renderImage({
-    TFconsensusname<-paste("TF_data_files/PeakDist/",input$TFs,"_Glu_PeakHistogram_190314.png",sep="")
-    return(list(
-      src = TFconsensusname,
-      contentType = "image/png",
-      alt = "peakdist",
-      height    = 170,
-      units     = "in"
-    ))
-    
-  },deleteFile = FALSE)
-  output$peakdist_nit<-renderImage({
-    TFconsensusname<-paste("TF_data_files/PeakDist/",input$TFs,"_Nit_PeakHistogram_190314.png",sep="")
-    return(list(
-      src = TFconsensusname,
-      contentType = "image/png",
-      alt = "peakdist",
-      height    = 170,
-      units     = "in"
-    ))
-    
-  },deleteFile = FALSE)
-  output$peakdist_eth<-renderImage({
-    TFconsensusname<-paste("TF_data_files/PeakDist/",input$TFs,"_Eth_PeakHistogram_190314.png",sep="")
-    return(list(
-      src = TFconsensusname,
-      contentType = "image/png",
-      alt = "peakdist",
-      height    = 170,
-      units     = "in"
-    ))
-    
-  },deleteFile = FALSE)
-  output$peakdist_ana<-renderImage({
-    TFconsensusname<-paste("TF_data_files/PeakDist/",input$TFs,"_Ana_PeakHistogram_190314.png",sep="")
-    return(list(
-      src = TFconsensusname,
-      contentType = "image/png",
-      alt = "peakdist",
-      height    = 170,
-      units     = "in"
-    ))
-    
-  },deleteFile = FALSE)
-  
-  output$sctrex<-renderImage({
-    
-    return(list(
-      src = "TF_data_files/Resources/sctrex.png",
-      contentType = "image/png",
-      alt = "sctrex",
-      height    = 200,
-      units     = "in"
-    ))
-    
-  },deleteFile = FALSE)
-  
-  output$downloadreadsData <- downloadHandler(
-    filename = function() {
-      paste(input$text,"_",input$ReadsData, "_Reads.csv", sep = "")
-    },
-    content = function(file) {
-      
-      peak.dist.data<-rpeak.dist.data()
- 
-      if(input$ReadsData=="Glu"){ out<-peak.dist.data$tflist_Glu}
-      if(input$ReadsData=="Nit"){ out<-peak.dist.data$tflist_Nit}
-      if(input$ReadsData=="Eth"){ out<-peak.dist.data$tflist_Eth}
-      if(input$ReadsData=="Ana"){ out<-peak.dist.data$tflist_Ana}
-        write.csv(out, file, row.names = FALSE)
-    }
-  )
-  output$downloadPeakData <- downloadHandler(
-    filename = function() {
-      paste(input$TFs, "_SumPeaks.csv", sep = "")
-    },
-    content = function(file) {
-
-      out<-read.csv(paste("TF_data_files/GEMPeaks/",input$TFs,"_geneTargetList_190314.csv",sep=""))
-      write.csv(out, file, row.names = FALSE)
-    }
-  )
-  output$downloadPeakDataAd <- downloadHandler(
-    filename = function() {
-      paste(input$TFs, "_All_PeakPos.csv", sep = "")
-    },
-    content = function(file) {
-      out<-read.csv(paste("TF_data_files/GEMPeaks/",input$TFs,"_GEManalysis_190314.csv",sep=""))
-      write.csv(out, file, row.names = FALSE)
-    }
-  )
-  
-  output$plot1 <- renderPlot({
-    peak.dist.data<-rpeak.dist.data()
-    TPM<-rTPM()
-    BS<-rBS()
-    TATA_GTF.df<-rTATA_GTF()
-    if (length(peak.dist.data$tflist_Glu)==0)return(NULL)
-    p1<-profile_plot_func(rTATA_GTF(),peak.dist.data$tflist_Glu, x,rCurr.Geneseq(),ranges,colorset.TF, BS$d.Glu, rATGC(), input, ryRanges(),rGene_start(),TPM$Glu,rMotiffinder())
-    p1
-  },bg="transparent")
-  output$plot2 <- renderPlot({
-    peak.dist.data<-rpeak.dist.data()
-    TPM<-rTPM()
-    BS<-rBS()
-    TATA_GTF.df<-rTATA_GTF()
-    if (length(peak.dist.data$tflist_Nit)==0)return(NULL)
-    p2<-profile_plot_func(rTATA_GTF(),peak.dist.data$tflist_Nit, x,rCurr.Geneseq(),ranges,colorset.TF, BS$d.Nit, rATGC(), input, ryRanges(),rGene_start(),TPM$Nit,rMotiffinder())
-    p2
-  },bg="transparent")
-  output$plot3 <- renderPlot({
-    peak.dist.data<-rpeak.dist.data()
-    TPM<-rTPM()
-    BS<-rBS()
-    if (length(peak.dist.data$tflist_Eth)==0)return(NULL)
-    p3<-profile_plot_func(rTATA_GTF(),peak.dist.data$tflist_Eth, x,rCurr.Geneseq(),ranges,colorset.TF, BS$d.Eth, rATGC(), input, ryRanges(),rGene_start(),TPM$Eth,rMotiffinder())
-    p3
-  },bg="transparent")
-  output$plot4 <- renderPlot({
-    peak.dist.data<-rpeak.dist.data()
-    TPM<-rTPM()
-    BS<-rBS()
-    if (length(peak.dist.data$tflist_Ana)==0)return(NULL)
-    p4<-profile_plot_func(rTATA_GTF(),peak.dist.data$tflist_Ana, x,rCurr.Geneseq(),ranges,colorset.TF, BS$d.Ana, rATGC(), input, ryRanges(),rGene_start(),TPM$Ana,rMotiffinder())
-    p4
-  },bg="transparent")
-  output$plot5 <-renderPlot({
-    n=length(name.TF)
-    n2=10
-    x1<-matrix(0,1,n)
-    x2<-matrix(0,1,n)
-    y1<-matrix(0,1,n)
-    y2<-matrix(0,1,n)
-    t<-colorset.TF.df$name.TF
-    colval<-colorset.TF.df$myColors
-    d=data.frame(t(x1), t(x2), t(y1), t(y2), t, colval)
-    colnames(d)<-c("x1","x2","y1","y2","t","colval")
-    p1<-ggplot() +
-      scale_x_continuous(name="x") +
-      scale_y_continuous(name="y")+
-      labs(fill = "TF BS", alpha=0.5)+
-      scale_fill_manual(values=colorset.TF[1:length(name.TF)])+ 
-      geom_rect(data=d, mapping=aes(xmin=x1, xmax=x2, ymin=y1, ymax=y2, fill=t), alpha=alphaval) +
-      theme_void()+
-      guides(fill = guide_legend(nrow = nrow(colorset.TF.df), ncol=1))+
-      theme(legend.text=element_text(size=14),
-            legend.title=element_text(size=16),
-            panel.grid.major = element_blank() # get rid of major grid
-            , panel.grid.minor = element_blank() # get rid of minor grid
-      )
-    
-    p1
-  },bg="transparent")
-
   observeEvent(input$plot1_dblclick, {
     # When a double-click happens, check if there's a brush on the plot.
     # If so, zoom to the brush bounds; if not, reset the zoom.
@@ -936,70 +914,88 @@ function(input, output) {
     )})
   output$GeneInfo<-renderText({
     if(length(rGeneidx())>0){
-    curr.geneSys<-gene.Systematic[rGeneidx(),1]
-    input.gene<-as.character(gene.Common[rGeneidx(),1])
-    tempfile_start<-subset(TSS.start, TSS.start$Gene == input.gene)
-    Chr<-tempfile_start$Chromosome
-    ChrPos<-as.numeric(as.character(tempfile_start$TSS))+as.numeric(as.character(tempfile_start$DistanceTSStoORF))
-    if(input.gene!="GDH3" & input.gene!="ARR1"){
-    nextgeneS<-gene.Systematic[(rGeneidx()+1),1]
-    prevgeneS<-gene.Systematic[(rGeneidx()-1),1]
-    nextgeneC<-gene.Common[(rGeneidx()+1),1]
-    prevgeneC<-gene.Common[(rGeneidx()-1),1]
-    if(substr(curr.geneSys,2,2)!=substr(nextgeneS,2,2)){
-    nextgeneC<-"End of Chromosome"
-    nextgeneS<-""}
-    if(substr(curr.geneSys,2,2)!=substr(prevgeneS,2,2)){
-    prevgeneC<-"End of Chromosome"
-    prevgeneS<-""
-    }}else if(input.gene=="GDH3" ){
-      nextgeneS<-gene.Systematic[(rGeneidx()+1),1]
-      nextgeneC<-gene.Common[(rGeneidx()+1),1]
-        prevgeneC<-"End of Chromosome"
-        prevgeneS<-"" 
-    }else if(input.gene=="ARR1" ){
-      prevgeneS<-gene.Systematic[(rGeneidx()-1),1]
-      prevgeneC<-gene.Common[(rGeneidx()-1),1]
-        nextgeneC<-"End of Chromosome"
-        nextgeneS<-""
-    }
-    
-    return(paste(paste("Genename Systematic: ", curr.geneSys), paste("Genename Common: ", input.gene),paste("Gene start: ",Chr,ChrPos),paste("Gene up: ", prevgeneC,prevgeneS),paste("Gene down: ", nextgeneC, nextgeneS),sep="\n"))
+      curr.geneSys<-gene.Systematic[rGeneidx(),1]
+      input.gene<-as.character(gene.Common[rGeneidx(),1])
+      tempfile_start<-subset(TSS.start, TSS.start$Gene == input.gene)
+      Strand<-tempfile_start$Strand
+      Chr<-tempfile_start$Chromosome
+      ChrPos<-as.numeric(as.character(tempfile_start$TSS))+as.numeric(as.character(tempfile_start$DistanceTSStoORF))
+      if(input.gene!="GDH3" & input.gene!="ARR1"){
+        nextgeneS<-gene.Systematic[(rGeneidx()+1),1]
+        prevgeneS<-gene.Systematic[(rGeneidx()-1),1]
+        nextgeneC<-gene.Common[(rGeneidx()+1),1]
+        prevgeneC<-gene.Common[(rGeneidx()-1),1]
+        if(substr(curr.geneSys,2,2)!=substr(nextgeneS,2,2)){
+          nextgeneC<-"End of Chromosome"
+          nextgeneS<-""}
+        if(substr(curr.geneSys,2,2)!=substr(prevgeneS,2,2)){
+          prevgeneC<-"End of Chromosome"
+          prevgeneS<-""
+        }}else if(input.gene=="GDH3" ){
+          nextgeneS<-gene.Systematic[(rGeneidx()+1),1]
+          nextgeneC<-gene.Common[(rGeneidx()+1),1]
+          prevgeneC<-"End of Chromosome"
+          prevgeneS<-"" 
+        }else if(input.gene=="ARR1" ){
+          prevgeneS<-gene.Systematic[(rGeneidx()-1),1]
+          prevgeneC<-gene.Common[(rGeneidx()-1),1]
+          nextgeneC<-"End of Chromosome"
+          nextgeneS<-""
+        }
+      
+      return(paste(paste("Genename Systematic: ", curr.geneSys), paste("Genename Common: ", input.gene),paste("Gene start: ",Chr,ChrPos),paste("Gene orientation: ",Strand),paste("Gene up: ", prevgeneC,prevgeneS),paste("Gene down: ", nextgeneC, nextgeneS),sep="\n"))
     }
     else{return("Error: Gene doesn't exist")}
   })
+  rSeqMax<-eventReactive(input$SeqFind,{
+    SeqMax<-input$SeqMax
+  })
+  rSeqMin<-eventReactive(input$SeqFind,{
+    SeqMin<-input$SeqMin
+  })
+  
   output$Sequnce_out <- renderText({
-    if(input$SeqFind==TRUE){
+      SeqMax<-rSeqMax()
+      SeqMin<-rSeqMin()
+    if((as.numeric(SeqMax)-as.numeric(SeqMin))>0){
       curr.geneSys<-gene.Systematic[rGeneidx(),1]
       Geneidx.seq<-grep(paste("^",curr.geneSys,"$",sep=""), as.character(Geneseq[,1]))
-      Curr.Geneseq<-Geneseq[Geneidx.seq,-(1:2)]   
-      Curr.Geneseq<-as.character(Curr.Geneseq)
+      Curr.Geneseq<-as.character(Geneseq[Geneidx.seq,-(1:2)] )  
       Curr.Geneseq<-sapply(seq(from=1, to=nchar(Curr.Geneseq), by=1), function(i) substr(Curr.Geneseq, i, i))
-      Curr.Geneseq<-Curr.Geneseq[1000+(input$SeqMin:input$SeqMax)]
-      d<-floor(((1000+as.numeric(input$SeqMax))-(1000+as.numeric(input$SeqMin)))/20)
+      Curr.Geneseq<-Curr.Geneseq[1000+(SeqMin:SeqMax)]
+      d<-floor(((1000+as.numeric(SeqMax))-(1000+as.numeric(SeqMin)))/20)
       Out.Geneseq<-data.frame(matrix(ncol=d,nrow=1))
       o=0
-      for (i in 1:d){
-        if(i>1){
-         o=1}
-        
-      Out.Geneseq[,i]<-paste(Curr.Geneseq[((i-1)*20+o):(i*20)],collapse="")
+      if((as.numeric(SeqMax)-as.numeric(SeqMin))<20){
+        Out.Geneseq<-Curr.Geneseq
+      }else{
+        for (i in 1:d){
+          if(i>1){
+            o=1}
+          Out.Geneseq[,i]<-paste(Curr.Geneseq[((i-1)*20+o):(i*20)],collapse="")
+        }
       }
       Out.Geneseq<-as.character(Out.Geneseq)
+      
+    }else(Out.Geneseq<-"Wrong input sequence")
       return(Out.Geneseq)
-    }
-  })
+    })
+
   rCCM<-reactive({
     val1=0
     if(input$val1=="Exclude dubious and non-Yeast 8" ){val1=1}
     if(input$val1=="Include dubious and non-Yeast 8"){val1=2}
     return(val1)
   })
+  rGOterm<-eventReactive(input$search,{
+    goterm<-input$goterm
+  })
+  rTest<-eventReactive(input$search,{
+    test<-input$test
+  })
+  
   output$goterms<-renderDataTable({
-    pathways.name<-input$goterm
-    pathways.name<-tolower(pathways.name)
-    pathways.name<-strsplit(pathways.name, "[+]")
-    pathways.name<-unlist(pathways.name)
+    pathways.name<-unlist(strsplit(tolower(input$goterm), "[+]"))
     pathways.go <- filter(go_bio, grepl(paste(pathways.name, collapse="|"),name_1006))
     pathways.go1<-data.frame(unique(pathways.go$name_1006))
     colnames(pathways.go1)<-"GO-terms"
@@ -1007,7 +1003,7 @@ function(input, output) {
   }, options=list(pageLength=5))
   output$selectInput <- renderText({
     if(input$test=="Fisher"){
-      return("The Fisher test is based on the occurens of one transcription factor at the same gene as another transcription factor. 
+      return("The Fisher test is based on the occurrence of one transcription factor at the same gene as another transcription factor. 
              The probability is plotted in a heatmap where * denotes p<0.001")
     }
     
@@ -1019,258 +1015,204 @@ function(input, output) {
              Transcription factors that are highly connected appear closer on the chart. The node size is weighted.")
     }
     if(input$test=="Cluster"){
-      return("The genes in the GO-term is clustered by k-medoids clustering based on the transcription factor occurens. Positive medoid coefficient indicates presens of TF while negative coefficient indicates absense of TF in the cluster.")
+      return("The genes in the GO-term is clustered by k-medoids clustering based on the transcription factor occurrence. Positive medoid coefficient indicates presence of TF while negative coefficient indicates absence of TF in the cluster.")
     }
     if(input$test=="Linear Model"){
-      return("Based on the transcription factor occurens a linear model is used to predict the resulting TPM values.")
+      return("Based on the transcription factor occurrence a linear model is used to predict the resulting TPM values.")
     }
+  })
+  output$table1 <- renderDataTable({ rdataTarget()}, options=list(pageLength=5))
+  output$sctrex<-renderImage({
+    
+    return(list(
+      src = "TF_data_files/Resources/sctrex.png",
+      contentType = "image/png",
+      alt = "sctrex",
+      height    = 200,
+      units     = "in"
+    ))
+    
+  },deleteFile = FALSE)
+
+  output$plots.peak <- renderUI({
+    plot_output_list <- lapply(1:length(name.Cond), function(i) {
+      plotname <- paste("plot", i, sep="")
+      plottitle <- paste("plottitle", i, sep="")
+      tags$div(class = "group-output",
+               textOutput(plottitle, container = h3),
+               plotOutput(plotname, 
+                          height = 180, 
+                          dblclick = "plot1_dblclick", 
+                           hover ="plot1_hover",
+                           brush = brushOpts(id = "plot1_brush",resetOnNew = TRUE)
+               ) %>% withSpinner(color="#0dc5c1")
+               
+      )
     })
-  plotdata1_p3<-eventReactive(input$search, {
-   
-    val1<-rCCM()
-    val2<-1
-    
-    pathways.name<-input$goterm
-    pathways.name<-tolower(pathways.name)
-    pathways.name<-strsplit(pathways.name, "[+]")
-    pathways.name<-unlist(pathways.name)
-    pathwayData<-goterm_func(pathways.name)
-    totalgenes<-nrow(pathwayData)
-    ####The data
-    conditionname<-"Glu"
-    data.list<-data_func(conditionname,pathwayData,val1, val2)
-    
-    data1<-data.list$data1
-    datacondname<-paste(conditionname,".lim",sep="")
-    data1<-merge(data1, TPM_data, by="Gene")
-    y.ori<-data1[datacondname]
-    x.ori<-data1[,name.TF]
-    data.list2=data_treatment_func(y.ori,x.ori, data1, val2, conditionname)
-    txtstr<-paste( "Selected genes", nrow(data.list2$x),"of total",totalgenes)
-    data<-cbind(data.list2$y,data.list2$x)
-    ###Fisher
-    if(input$test=="Fisher"){
-      p1<-tryCatch({fishers_test_func(data.list2$x, txtstr,1)},
-                   error=function(cond){
-                     return(ggplot()+theme_void()+geom_text(aes(x=1,y=1,label="Not enough genes selected to do statistical function",hjust=(0.4) )))}
+    do.call(tagList, plot_output_list)
+  })
+  output$plots.analysis <- renderUI({
+    analysis_output_list <- lapply(1:length(name.Cond), function(i) {
+      plotname <- paste("plotAn", i, sep="")
+      plottitle <- paste("plottitleAn", i, sep="")
+      tags$div(class = "group-output",
+               textOutput(plottitle, container = h3),
+               plotOutput(plotname, 
+                          height = 350 
+               ) %>% withSpinner(color="#0dc5c1")
+               
       )
-    }
-    if(input$test=="Heatmap"){
-      ##### Only data heatmap
-      data<-cbind(data.list2$y,data.list2$x)
-      p1<-heatmap_func(data,txtstr,1)
+    })
+    do.call(tagList, analysis_output_list)
+  })
+  output$plots.motif <- renderUI({
+    motif_output_list <- lapply(1:length(name.Cond), function(i) {
+      plotname <- paste("Motif", i, sep="")
+      plottitle <- paste("plottitleMot", i, sep="")
+      tags$div(class = "group-output",
+               textOutput(plottitle, container = h3),
+               imageOutput(plotname,height=200))
+    })
+    do.call(tagList, motif_output_list)
+  })
+  output$plots.seq <- renderUI({
+    seq_output_list <- lapply(1:length(name.Cond), function(i) {
+      plotname <- paste("Seq", i, sep="")
+      plottitle <- paste("plottitleSeq", i, sep="")
+      tags$div(class = "group-output",
+               textOutput(plottitle, container = h3),
+               imageOutput(plotname,height=200))
+    })
+    do.call(tagList, seq_output_list)
+  })
+  output$plots.PeakDist <- renderUI({
+    PeakDist_output_list <- lapply(1:length(name.Cond), function(i) {
+      plotname <- paste("PeakDist", i, sep="")
+      plottitle <- paste("plottitlePeakDist", i, sep="")
+      tags$div(class = "group-output",
+               textOutput(plottitle, container = h3),
+               imageOutput(plotname,height=200))
+    })
+    do.call(tagList, PeakDist_output_list)
+  })
+  output$plot5 <-renderPlot({
+    n=length(rname.TF())
+    
+    n2=10
+    x1<-matrix(0,1,n)
+    x2<-matrix(0,1,n)
+    y1<-matrix(0,1,n)
+    y2<-matrix(0,1,n)
+    t<-rname.TF()
+    mycol<-as.character(rmyColors.TF())
+    names(mycol)<-as.character(t(rname.TF()))
+    colval<-mycol
+    d=data.frame(t(x1), t(x2), t(y1), t(y2), t, colval)
+    colnames(d)<-c("x1","x2","y1","y2","t","colval")
+    p1<-ggplot() +
+      scale_x_continuous(name="x") +
+      scale_y_continuous(name="y")+
+      labs(fill = "TF BS", alpha=0.5)+
+      scale_fill_manual(values=mycol)+ 
+      geom_rect(data=d, mapping=aes(xmin=x1, xmax=x2, ymin=y1, ymax=y2, fill=t), alpha=alphaval) +
+      theme_void()+
+      guides(fill = guide_legend(nrow = nrow(rname.TF()), ncol=1))+
+      theme(legend.text=element_text(size=14),
+            legend.title=element_text(size=16),
+            panel.grid.major = element_blank() # get rid of major grid
+            , panel.grid.minor = element_blank() # get rid of minor grid
+      )
+    
+    p1
+  },bg="transparent")
+  #Dynamically generate all the plots based on conditions
+  for (i in 1:length(name.Cond)) {
+    local({
+      my_i<-i
+      plottitleMot <- paste("plottitleMot", my_i, sep="")
+      output[[plottitleMot]] <- renderText({name.Cond[my_i]})
+      plotnameMot <- paste("Motif", my_i, sep="")
+      output[[plotnameMot]] <- renderImage({
+        motif<-motif_func(input$TFs,name.Cond[my_i])
+      },deleteFile = FALSE)
+      
+      plottitleSeq <- paste("plottitleSeq", my_i, sep="")
+      output[[plottitleSeq]] <- renderText({name.Cond[my_i]})
+      plotnameSeq <- paste("Seq", my_i, sep="")
+      output[[plotnameSeq]] <- renderImage({
+        seq_map<-seq_map_func(input$TFs,name.Cond[my_i])
+      },deleteFile = FALSE)
+      
+      plottitlePeakDist <- paste("plottitlePeakDist", my_i, sep="")
+      output[[plottitlePeakDist]] <- renderText({name.Cond[my_i]})
+      plotnamePeakDist <- paste("PeakDist", my_i, sep="")
+      output[[plotnamePeakDist]] <- renderImage({
+        peak_dist<-peak_dist_func(input$TFs,name.Cond[my_i])
+      },deleteFile = FALSE)
+      
+      plottitle <- paste("plottitle", my_i, sep="")
+      output[[plottitle]] <- renderText({name.Cond[my_i]})
+      plotname <- paste("plot", my_i, sep="")
+      output[[plotname]] <- renderPlot({
+        mycol<-as.character(rmyColors.TF())
+        names(mycol)<-as.character(t(rname.TF()))
+        if (length(rpeak.dist.data()[[name.Cond[my_i]]])==0)return(NULL)
+        p1<-profile_plot_func(rTATA(),rpeak.dist.data()[[name.Cond[my_i]]], x,rCurr.Geneseq(),ranges,mycol, rBS()[[name.Cond[my_i]]], rATGC(), input, ryRanges(),rGene_start(),rTPM()[[name.Cond[my_i]]],rMotiffinder())
+        p1
 
-    }
-    if(input$test=="Network"){
-      p1<-net_func(data.list2$x, txtstr)
+      },bg="transparent")
       
-    }
-    if(input$test=="Cluster"){
-      p1<-cluster_func(data.list2$x,1, input$slider1)
+      plottitleAn <- paste("plottitleAn", my_i, sep="")
+      output[[plottitleAn]] <- renderText({name.Cond[my_i]})
+      plotnameAn <- paste("plotAn", my_i, sep="")
+      output[[plotnameAn]] <- renderPlot({
+        downloadVal=1
+        p1<-tryCatch({Stat_plot_func(rCCM(),downloadVal,name.Cond[my_i],rGOterm(),rname.TF(),rTest(),rdata.New.TF(),input$slider1)},
+                               error=function(analysis){
+                                 return(ggplot()+theme_void()+geom_text(aes(x=1,y=1,label="Not enough genes selected to do statistical function",hjust=(0.4) ),size=5))}
+        )
+        p1
+      },bg="transparent")
       
-    }
-    if(input$test=="Linear Model"){
-      datalin<-cbind(data.list2$y,data.list2$x)
-      #zero interaction
-      p1<- model_zero_func(datalin, txtstr,1)
-    }
-    
-     p1
-  })
-  plotdata2_p3<-eventReactive(input$search, {
-    val1<-rCCM()
-    val2<-1
-    
-    pathways.name<-input$goterm
-    pathways.name<-tolower(pathways.name)
-    pathways.name<-strsplit(pathways.name, "[+]")
-    pathways.name<-unlist(pathways.name)
-    pathwayData<-goterm_func(pathways.name)
-    totalgenes<-nrow(pathwayData)
-    ####The data
-    conditionname<-"Nit"
-    data.list<-data_func(conditionname,pathwayData,val1, val2)
-    data1<-data.list$data1
-    datacondname<-paste(conditionname,".lim",sep="")
-    data1<-merge(data1, TPM_data, by="Gene")
-    y.ori<-data1[datacondname]
-    x.ori<-data1[,name.TF]
-    
-    data.list2=data_treatment_func(y.ori,x.ori, data1, val2, conditionname)
-    txtstr<-paste( "Selected genes", nrow(data.list2$x),"of total",totalgenes)
-    data<-cbind(data.list2$y,data.list2$x)
-    ###Fisher
-    if(input$test=="Fisher"){
-      p1<-tryCatch({fishers_test_func(data.list2$x, txtstr,1)},
-                   error=function(cond){
-                     return(ggplot()+theme_void()+geom_text(aes(x=1,y=1,label="Not enough genes selected to do statistical function",hjust=(0.4) )))}
-      )
-    }
-    if(input$test=="Heatmap"){
-      data<-cbind(data.list2$y,data.list2$x)
-      p1<-heatmap_func(data,txtstr,1)
-    }
-    if(input$test=="Network"){
-      p1<-net_func(data.list2$x, txtstr)
-      
-    }
-    if(input$test=="Cluster"){
-      p1<-cluster_func(data.list2$x,1, input$slider1)
-    }
-    if(input$test=="Linear Model"){
-      datalin<-cbind(data.list2$y,data.list2$x)
-      #zero interaction
-      p1<- model_zero_func(datalin, txtstr,1)
-    }
-    
-    p1
-    
-  })
-  plotdata3_p3<-eventReactive(input$search, {
-    val1<-rCCM()
-    val2<-1
-    
-    pathways.name<-input$goterm
-    pathways.name<-tolower(pathways.name)
-    pathways.name<-strsplit(pathways.name, "[+]")
-    pathways.name<-unlist(pathways.name)
-    pathwayData<-goterm_func(pathways.name)
-    totalgenes<-nrow(pathwayData)
-    ####The data
-    conditionname<-"Eth"
-    data.list<-data_func(conditionname,pathwayData,val1, val2)
-    data1<-data.list$data1
-    datacondname<-paste(conditionname,".lim",sep="")
-    data1<-merge(data1, TPM_data, by="Gene")
-    y.ori<-data1[datacondname]
-    x.ori<-data1[,name.TF]
-    
-    data.list2=data_treatment_func(y.ori,x.ori, data1, val2, conditionname)
-    txtstr<-paste( "Selected genes", nrow(data.list2$x),"of total",totalgenes)
-    data<-cbind(data.list2$y,data.list2$x)
-    ###Fisher
-    if(input$test=="Fisher"){
-      p1<-tryCatch({fishers_test_func(data.list2$x, txtstr,1)},
-                   error=function(cond){
-                     return(ggplot()+theme_void()+geom_text(aes(x=1,y=1,label="Not enough genes selected to do statistical function",hjust=(0.4) )))}
-      )
-    }
-    if(input$test=="Heatmap"){
-      data<-cbind(data.list2$y,data.list2$x)
-      p1<-heatmap_func(data,txtstr,1)
-      
-    }
-    if(input$test=="Network"){
-      p1<-net_func(data.list2$x, txtstr)
-      
-    }
-    if(input$test=="Cluster"){
-      p1<-cluster_func(data.list2$x,1, input$slider1)
-    }
-    if(input$test=="Linear Model"){
-      datalin<-cbind(data.list2$y,data.list2$x)
-      #zero interaction
-      p1<- model_zero_func(datalin, txtstr,1)
-    }
-    p1
-    
-  })
-  plotdata4_p3<-eventReactive(input$search, {
-    val1<-rCCM()
-    val2<-1
-    
-    pathways.name<-input$goterm
-    pathways.name<-tolower(pathways.name)
-    pathways.name<-strsplit(pathways.name, "[+]")
-    pathways.name<-unlist(pathways.name)
-    pathwayData<-goterm_func(pathways.name)
-    totalgenes<-nrow(pathwayData)
-    ####The data
-    conditionname<-"Ana"
-    data.list<-data_func(conditionname,pathwayData,val1, val2)
-    data1<-data.list$data1
-    datacondname<-paste(conditionname,".lim",sep="")
-    data1<-merge(data1, TPM_data, by="Gene")
-    y.ori<-data1[datacondname]
-    x.ori<-data1[,name.TF]
-    
-    data.list2=data_treatment_func(y.ori,x.ori, data1, val2, conditionname)
-    txtstr<-paste( "Selected genes", nrow(data.list2$x),"of total",totalgenes)
-    data<-cbind(data.list2$y,data.list2$x)
-    ###Fisher
-    if(input$test=="Fisher"){
-      p1<-tryCatch({fishers_test_func(data.list2$x, txtstr,1)},
-                   error=function(cond){
-                     return(ggplot()+theme_void()+geom_text(aes(x=1,y=1,label="Not enough genes selected to do statistical function",hjust=(0.4) )))}
-      )
-    }
-    if(input$test=="Heatmap"){
-      data<-cbind(data.list2$y,data.list2$x)
-      p1<-heatmap_func(data,txtstr,1)
-    }
-    if(input$test=="Network"){
-      p1<-net_func(data.list2$x, txtstr)
-      
-    }
-    if(input$test=="Cluster"){
-      p1<-cluster_func(data.list2$x,1, input$slider1)
-      
-    }
-    if(input$test=="Linear Model"){
-      datalin<-cbind(data.list2$y,data.list2$x)
-      #zero interaction
-
-      p1<- model_zero_func(datalin, txtstr,1)
-    }
-    p1
-    
-  })
+    })
+  }
   
-  rdowloadStatData<-reactive({
-    val1<-rCCM()
-    val2<-1
-    
-    pathways.name<-input$goterm
-    pathways.name<-tolower(pathways.name)
-    pathways.name<-strsplit(pathways.name, "[+]")
-    pathways.name<-unlist(pathways.name)
-    pathwayData<-goterm_func(pathways.name)
-    totalgenes<-nrow(pathwayData)
-    ####The data
-    conditionname<-input$StatData
-    data.list<-data_func(conditionname,pathwayData,val1, val2)
-    
-    data1<-data.list$data1
-    datacondname<-paste(conditionname,".lim",sep="")
-    data1<-merge(data1, TPM_data, by="Gene")
-    y.ori<-data1[datacondname]
-    x.ori<-data1[,name.TF]
-    data.list2=data_treatment_func(y.ori,x.ori, data1, val2, conditionname)
-    txtstr<-paste( "Selected genes", nrow(data.list2$x),"of total",totalgenes)
-    data<-cbind(data.list2$y,data.list2$x)
-
-    ###Fisher
-    if(input$test=="Fisher"){
-      p1<-fishers_test_func(data.list2$x, txtstr,2)
+  
+  output$downloadreadsData <- downloadHandler(
+    filename = function() {
+      paste(input$text,"_",input$ReadsData, "_Reads.csv", sep = "")
+    },
+    content = function(file) {
       
-      }
-    if(input$test=="Heatmap"){
-      ##### Only data heatmap
-      data<-cbind(data.list2$y,data.list2$x)
-      p1<-heatmap_func(data,txtstr,2)
+      peak.dist.data<-rpeak.dist.data()
+      out<-peak.dist.data[input$ReadsData]
+      write.csv(out, file, row.names = FALSE)
     }
-    if(input$test=="Network"){
-      p1<-net_func(data.list2$x, txtstr)
+  )
+  output$downloadPeakData <- downloadHandler(
+    filename = function() {
+      paste(input$TFs, "_SumPeaks.csv", sep = "")
+    },
+    content = function(file) {
+      file.name<-list.files(path="TF_data_files/GEMPeaks/",pattern=paste(input$TFs,"(.*)_geneTargetList_(.*).csv$",sep=""))
+      out<-read.csv(paste("TF_data_files/GEMPeaks/",file.name,sep=""),sep=",")
+      write.csv(out, file, row.names = FALSE)
     }
-    if(input$test=="Cluster"){
-      p1<-cluster_func(data.list2$x,2,input$slider1)
+  )
+  output$downloadPeakDataAd <- downloadHandler(
+    filename = function() {
+      paste(input$TFs, "_All_PeakPos.csv", sep = "")
+    },
+    content = function(file) {
+      file.name<-list.files(path="TF_data_files/GEMPeaks/",pattern=paste(input$TFs,"(.*)_GEManalysis_(.*).csv$",sep=""))
+      out<-read.csv(paste("TF_data_files/GEMPeaks/",file.name,sep=""),sep=",")
+    
+      write.csv(out, file, row.names = FALSE)
     }
-    if(input$test=="Linear Model"){
-      datalin<-cbind(data.list2$y,data.list2$x)
-      #zero interaction
-      p1<- model_zero_func(datalin, txtstr,2)
-    }
-    out.data<-p1
+  )
+  rdowloadStatData<-reactive({
+    downloadVal=2
+    out.data<-Stat_plot_func(rCCM(),downloadVal,input$StatData,rGOterm(),rname.TF(),rTest(),rdata.New.TF(),input$slider1)
     return(out.data)
   })
   output$downloadStatData <- downloadHandler(
@@ -1278,31 +1220,9 @@ function(input, output) {
       paste(input$StatData,"_",input$test, ".csv", sep = "")
     },
     content = function(file) {
-      
       write.table(rdowloadStatData(), file, row.names = FALSE, col.names=FALSE, sep=",")
     }
   ) 
-  output$plot1_p3 <- renderPlot({
-    par(mar=c(1,1,1,1))
-    p1<-plotdata1_p3()
-    p1
-  },bg="transparent")
-  output$plot2_p3 <- renderPlot({
-    par(mar=c(1,1,1,1))
-    p1<-plotdata2_p3()
-    p1
-  },bg="transparent")
-  output$plot3_p3 <- renderPlot({
-    par(mar=c(1,1,1,1))
-    p3<-  plotdata3_p3()
-    p3
-  },bg="transparent")
-  output$plot4_p3 <- renderPlot({
-    par(mar=c(1,1,1,1))
-    p4<-    plotdata4_p3()
-    p4
-  },bg="transparent")
   
-  
-    }
+  }
 
